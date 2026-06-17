@@ -10,9 +10,9 @@ const SECTION_GAP = 4
 const FOOTER_H = 10
 const GAP = 8
 
-export async function generatePDF({ company, projectName, institution, date, items, showDescriptions, showSections, logo }) {
+export async function generatePDF({ company, projectName, institution, date, items, showDescriptions, showSections, logo, showDate, showPagination }) {
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const formattedDate = formatDate(date)
+  const formattedDate = (showDate && date) ? formatDate(date) : null
   const pages = buildPages(items, showSections)
   const totalPages = pages.length
 
@@ -24,7 +24,7 @@ export async function generatePDF({ company, projectName, institution, date, ite
 
     if (sectionTitle) drawSectionBar(pdf, sectionTitle)
 
-    const layout = computeLayout(!!sectionTitle, showDescriptions)
+    const layout = computeLayout(!!sectionTitle, showDescriptions, showPagination)
 
     for (let slot = 0; slot < photos.length; slot++) {
       const photo = photos[slot]
@@ -35,7 +35,7 @@ export async function generatePDF({ company, projectName, institution, date, ite
       }
     }
 
-    drawFooter(pdf, pageIdx + 1, totalPages)
+    if (showPagination) drawFooter(pdf, pageIdx + 1, totalPages)
   }
 
   return pdf
@@ -82,9 +82,10 @@ export function countPages(items, showSections) {
   return pages
 }
 
-function computeLayout(hasSection, showDescriptions) {
+function computeLayout(hasSection, showDescriptions, showPagination) {
+  const footerH = showPagination ? FOOTER_H : 0
   const contentTop = MARGIN + HEADER_H + ACCENT_H + (hasSection ? SECTION_H + SECTION_GAP : 0)
-  const contentBottom = PAGE_H - FOOTER_H - MARGIN
+  const contentBottom = PAGE_H - footerH - MARGIN
   const descH = showDescriptions ? 9 : 0
   const photoH = (contentBottom - contentTop - GAP - descH * 2) / 2
   return { contentTop, photoH, descH }
@@ -119,20 +120,32 @@ function drawHeader(pdf, company, projectName, institution, date, logo) {
     curY += 5
   }
 
-  pdf.setTextColor(255, 255, 255)
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(10)
-  const projLines = pdf.splitTextToSize(projectName.toUpperCase(), textMaxW)
-  pdf.text(projLines.slice(0, 1), MARGIN, curY)
-  curY += 5.5
+  // Project name (optional — skip if empty)
+  if (projectName && projectName.trim()) {
+    pdf.setTextColor(255, 255, 255)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(10)
+    const projLines = pdf.splitTextToSize(projectName.toUpperCase(), textMaxW)
+    pdf.text(projLines.slice(0, 1), MARGIN, curY)
+    curY += 5.5
+  }
 
+  // Institution (always shown)
   pdf.setFont('helvetica', 'normal')
   pdf.setFontSize(8)
   pdf.setTextColor(170, 205, 235)
-  pdf.text(institution, MARGIN, curY)
-  curY += 4.5
+  if (institution) {
+    pdf.text(institution, MARGIN, curY)
+    curY += 4.5
+  }
 
-  pdf.text(date, MARGIN, curY)
+  // Date (optional — null when showDate is false)
+  if (date) {
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(8)
+    pdf.setTextColor(170, 205, 235)
+    pdf.text(date, MARGIN, curY)
+  }
 
   // Logo / badge box (top-right corner)
   const BOX_X = PAGE_W - MARGIN - 26

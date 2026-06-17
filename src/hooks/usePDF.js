@@ -6,12 +6,12 @@ export function usePDF() {
   const [pdfBlob, setPdfBlob] = useState(null)
   const [pdfDoc, setPdfDoc] = useState(null)
 
-  const generate = async ({ company, projectName, institution, date, items, showDescriptions, showSections, logo }) => {
+  const generate = async ({ company, projectName, institution, date, items, showDescriptions, showSections, logo, showDate, showPagination }) => {
     setStatus('generating')
     setPdfBlob(null)
     setPdfDoc(null)
     try {
-      const pdf = await generatePDF({ company, projectName, institution, date, items, showDescriptions, showSections, logo })
+      const pdf = await generatePDF({ company, projectName, institution, date, items, showDescriptions, showSections, logo, showDate, showPagination })
       const blob = pdf.output('blob')
       setPdfBlob(blob)
       setPdfDoc(pdf)
