@@ -22,9 +22,9 @@ export async function generatePDF({ company, projectName, institution, date, ite
 
     drawHeader(pdf, company, projectName, institution, formattedDate, logo)
 
-    if (sectionTitle) drawSectionBar(pdf, sectionTitle)
+    const sectionBarH = sectionTitle ? drawSectionBar(pdf, sectionTitle) : 0
 
-    const layout = computeLayout(!!sectionTitle, showDescriptions, showPagination)
+    const layout = computeLayout(sectionBarH, showDescriptions, showPagination)
 
     for (let slot = 0; slot < photos.length; slot++) {
       const photo = photos[slot]
@@ -82,9 +82,9 @@ export function countPages(items, showSections) {
   return pages
 }
 
-function computeLayout(hasSection, showDescriptions, showPagination) {
+function computeLayout(sectionBarH, showDescriptions, showPagination) {
   const footerH = showPagination ? FOOTER_H : 0
-  const contentTop = MARGIN + HEADER_H + ACCENT_H + (hasSection ? SECTION_H + SECTION_GAP : 0)
+  const contentTop = MARGIN + HEADER_H + ACCENT_H + (sectionBarH > 0 ? sectionBarH + SECTION_GAP : 0)
   const contentBottom = PAGE_H - footerH - MARGIN
   const descH = showDescriptions ? 9 : 0
   const photoH = (contentBottom - contentTop - GAP - descH * 2) / 2
@@ -187,13 +187,29 @@ function drawHeader(pdf, company, projectName, institution, date, logo) {
 }
 
 function drawSectionBar(pdf, title) {
+  const FONT_SIZE = 9
+  const LINE_H = 4.5   // mm entre líneas
+  const V_PAD = 3      // padding vertical arriba y abajo
+
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(FONT_SIZE)
+
+  const maxW = PAGE_W - MARGIN * 2 - 8
+  const lines = pdf.splitTextToSize(title.toUpperCase(), maxW)
+  const barH = Math.max(SECTION_H, lines.length * LINE_H + V_PAD * 2)
+
   const barY = HEADER_H + ACCENT_H
   pdf.setFillColor(30, 58, 95)
-  pdf.rect(0, barY, PAGE_W, SECTION_H, 'F')
+  pdf.rect(0, barY, PAGE_W, barH, 'F')
+
   pdf.setTextColor(255, 255, 255)
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(9)
-  pdf.text(title.toUpperCase(), PAGE_W / 2, barY + 6.8, { align: 'center' })
+  // Centrar el bloque de texto verticalmente dentro de la barra
+  const textStartY = barY + (barH - lines.length * LINE_H) / 2 + LINE_H * 0.75
+  lines.forEach((line, i) => {
+    pdf.text(line, PAGE_W / 2, textStartY + i * LINE_H, { align: 'center' })
+  })
+
+  return barH  // altura real usada, para que computeLayout ajuste el espacio
 }
 
 async function drawPhoto(pdf, dataUrl, x, y, maxW, maxH) {

@@ -131,8 +131,8 @@ function SectionCard({ item, index, isFirst, isLast, onTitleChange, onRemove, on
         <input
           type="text"
           value={item.title}
-          onChange={e => onTitleChange(e.target.value)}
-          placeholder="Título de sección..."
+          onChange={e => onTitleChange(e.target.value.toUpperCase())}
+          placeholder="TÍTULO DE SECCIÓN..."
           className="flex-1 bg-transparent text-white placeholder-white/50 font-semibold text-sm outline-none min-w-0"
         />
         <div className="flex gap-1 flex-shrink-0">
