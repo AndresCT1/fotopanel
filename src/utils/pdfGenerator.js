@@ -10,7 +10,7 @@ const SECTION_GAP = 4
 const FOOTER_H = 10
 const GAP = 8
 
-export async function generatePDF({ company, projectName, institution, date, items, showDescriptions, showSections }) {
+export async function generatePDF({ company, projectName, institution, date, items, showDescriptions, showSections, logo }) {
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const formattedDate = formatDate(date)
   const pages = buildPages(items, showSections)
@@ -20,7 +20,7 @@ export async function generatePDF({ company, projectName, institution, date, ite
     if (pageIdx > 0) pdf.addPage()
     const { sectionTitle, photos } = pages[pageIdx]
 
-    drawHeader(pdf, company, projectName, institution, formattedDate)
+    drawHeader(pdf, company, projectName, institution, formattedDate, logo)
 
     if (sectionTitle) drawSectionBar(pdf, sectionTitle)
 
@@ -90,7 +90,7 @@ function computeLayout(hasSection, showDescriptions) {
   return { contentTop, photoH, descH }
 }
 
-function drawHeader(pdf, company, projectName, institution, date) {
+function drawHeader(pdf, company, projectName, institution, date, logo) {
   pdf.setFillColor(30, 58, 95)
   pdf.rect(0, 0, PAGE_W, HEADER_H, 'F')
   pdf.setFillColor(249, 115, 22)
@@ -134,15 +134,43 @@ function drawHeader(pdf, company, projectName, institution, date) {
 
   pdf.text(date, MARGIN, curY)
 
-  // Logo box
-  const lx = PAGE_W - MARGIN - 26
-  pdf.setFillColor(249, 115, 22)
-  pdf.roundedRect(lx, 5, 26, HEADER_H - 10, 3, 3, 'F')
-  pdf.setTextColor(255, 255, 255)
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(8)
-  pdf.text('FOTO', lx + 13, HEADER_H / 2 - 1, { align: 'center' })
-  pdf.text('PANEL', lx + 13, HEADER_H / 2 + 5, { align: 'center' })
+  // Logo / badge box (top-right corner)
+  const BOX_X = PAGE_W - MARGIN - 26
+  const BOX_Y = 5
+  const BOX_W = 26
+  const BOX_H = HEADER_H - 10  // 38mm
+
+  if (logo) {
+    // White background box
+    pdf.setFillColor(255, 255, 255)
+    pdf.roundedRect(BOX_X, BOX_Y, BOX_W, BOX_H, 3, 3, 'F')
+
+    // Fit logo with contain (respect aspect ratio)
+    const PAD = 2
+    const availW = BOX_W - PAD * 2
+    const availH = BOX_H - PAD * 2
+    let drawW = availW
+    let drawH = drawW / logo.aspectRatio
+    if (drawH > availH) { drawH = availH; drawW = drawH * logo.aspectRatio }
+    const imgX = BOX_X + PAD + (availW - drawW) / 2
+    const imgY = BOX_Y + PAD + (availH - drawH) / 2
+    pdf.addImage(logo.dataUrl, 'PNG', imgX, imgY, drawW, drawH)
+  } else {
+    // Fallback: orange badge
+    pdf.setFillColor(249, 115, 22)
+    pdf.roundedRect(BOX_X, BOX_Y, BOX_W, BOX_H, 3, 3, 'F')
+    pdf.setTextColor(255, 255, 255)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(8)
+    if (company) {
+      // Show up to 2 initials
+      const initials = company.name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('')
+      pdf.text(initials, BOX_X + BOX_W / 2, BOX_Y + BOX_H / 2 + 2, { align: 'center' })
+    } else {
+      pdf.text('FOTO', BOX_X + BOX_W / 2, BOX_Y + BOX_H / 2 - 1, { align: 'center' })
+      pdf.text('PANEL', BOX_X + BOX_W / 2, BOX_Y + BOX_H / 2 + 5, { align: 'center' })
+    }
+  }
 }
 
 function drawSectionBar(pdf, title) {

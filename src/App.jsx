@@ -10,6 +10,34 @@ import { countPages } from './utils/pdfGenerator'
 const VIEW = { HOME: 'home', FORM: 'form', PHOTOS: 'photos', PDF: 'pdf' }
 const STORAGE_KEY = 'fotopanel_history'
 
+// Map company id → public logo URL (add entries when new logos are available)
+const COMPANY_LOGO_URLS = {
+  '1': '/logos/ic_logo.png',
+}
+
+async function loadLogoForPDF(url) {
+  try {
+    const resp = await fetch(url)
+    if (!resp.ok) return null
+    const blob = await resp.blob()
+    const dataUrl = await new Promise((res, rej) => {
+      const reader = new FileReader()
+      reader.onload = () => res(reader.result)
+      reader.onerror = rej
+      reader.readAsDataURL(blob)
+    })
+    const { width, height } = await new Promise((res) => {
+      const img = new Image()
+      img.onload = () => res({ width: img.naturalWidth, height: img.naturalHeight })
+      img.onerror = () => res({ width: 1, height: 1 })
+      img.src = dataUrl
+    })
+    return { dataUrl, aspectRatio: width / Math.max(height, 1) }
+  } catch {
+    return null
+  }
+}
+
 function loadHistory() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') } catch { return [] }
 }
@@ -23,11 +51,23 @@ export default function App() {
   const [items, setItems] = useState([])
   const [history, setHistory] = useState(loadHistory)
   const [showPreview, setShowPreview] = useState(false)
+  const [pdfLogo, setPdfLogo] = useState(null)       // base64 logo for jsPDF
+  const [lastCompanyId, setLastCompanyId] = useState( // persists across sessions
+    () => { try { return localStorage.getItem('fp_company') || null } catch { return null } }
+  )
   const { status, pdfBlob, generate, download, share, reset } = usePDF()
 
   const canShare = !!navigator.share
 
   useEffect(() => { saveHistory(history) }, [history])
+
+  // Load logo as base64 whenever the selected company changes
+  useEffect(() => {
+    const id = panelConfig?.company?.id
+    const url = id ? COMPANY_LOGO_URLS[id] : null
+    if (!url) { setPdfLogo(null); return }
+    loadLogoForPDF(url).then(setPdfLogo)
+  }, [panelConfig?.company?.id])
 
   const photoCount = items.filter(i => i.type === 'photo').length
   const pageCount = countPages(items, panelConfig?.showSections)
@@ -37,6 +77,10 @@ export default function App() {
     setPanelConfig(config)
     setItems([])
     reset()
+    // Persist last used company for home screen branding
+    const id = config.company?.id || ''
+    setLastCompanyId(id || null)
+    try { localStorage.setItem('fp_company', id) } catch {}
     setView(VIEW.PHOTOS)
   }
 
@@ -46,7 +90,7 @@ export default function App() {
     reset()
     setShowPreview(false)
     setView(VIEW.PDF)
-    const result = await generate({ ...panelConfig, items })
+    const result = await generate({ ...panelConfig, items, logo: pdfLogo })
     if (result) {
       setHistory(h => [{
         id: Date.now(),
@@ -125,12 +169,7 @@ export default function App() {
         <div className="min-h-screen bg-gray-50 flex flex-col">
           <div className="bg-[#1e3a5f] pb-10">
             <div className="px-6 pt-10 pb-2 flex flex-col items-center text-center">
-              <div className="w-20 h-20 bg-[#f97316] rounded-3xl flex items-center justify-center mb-4 shadow-xl shadow-orange-900/30">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-11 w-11 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
+              <CompanyBadge companyId={lastCompanyId} />
               <h1 className="text-3xl font-black text-white tracking-tight">FotoPanel</h1>
               <p className="text-blue-200 text-sm mt-2 max-w-xs">Genera paneles fotográficos profesionales para presentar a instituciones</p>
             </div>
@@ -219,10 +258,7 @@ export default function App() {
             showClear
           />
 
-          <div className="bg-[#1e3a5f]/5 border-b border-[#1e3a5f]/10 px-4 py-2.5">
-            <p className="text-xs font-semibold text-[#1e3a5f] truncate">{panelConfig?.projectName}</p>
-            <p className="text-xs text-gray-500 truncate">{panelConfig?.company?.name || panelConfig?.institution}</p>
-          </div>
+          <ProjectStrip panelConfig={panelConfig} />
 
           <div className="flex-1 px-4 pt-4 overflow-y-auto">
             <PhotoGrid
@@ -267,9 +303,14 @@ export default function App() {
             showClear={status !== 'generating'}
           />
 
-          <div className="bg-[#1e3a5f]/5 border-b border-[#1e3a5f]/10 px-4 py-2.5">
-            <p className="text-xs font-semibold text-[#1e3a5f] truncate">{panelConfig?.projectName}</p>
-            <p className="text-xs text-gray-500">{photoCount} fotos · {pageCount} {pageCount === 1 ? 'hoja' : 'hojas'}</p>
+          <div className="bg-[#1e3a5f]/5 border-b border-[#1e3a5f]/10 px-4 py-2.5 flex items-center gap-2">
+            {panelConfig?.company?.id && COMPANY_LOGO_URLS[panelConfig.company.id] && (
+              <img src={COMPANY_LOGO_URLS[panelConfig.company.id]} alt="" className="h-8 w-auto object-contain flex-shrink-0" />
+            )}
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-[#1e3a5f] truncate">{panelConfig?.projectName}</p>
+              <p className="text-xs text-gray-500">{photoCount} fotos · {pageCount} {pageCount === 1 ? 'hoja' : 'hojas'}</p>
+            </div>
           </div>
 
           <div className="flex-1 px-4">
@@ -293,4 +334,53 @@ function formatShortDate(dateStr) {
   if (!dateStr) return ''
   const [y, m, d] = dateStr.split('-')
   return `${d}/${m}/${y}`
+}
+
+function ProjectStrip({ panelConfig }) {
+  const logoUrl = panelConfig?.company?.id ? COMPANY_LOGO_URLS[panelConfig.company.id] : null
+  return (
+    <div className="bg-[#1e3a5f]/5 border-b border-[#1e3a5f]/10 px-4 py-2.5 flex items-center gap-2">
+      {logoUrl && (
+        <img src={logoUrl} alt="" className="h-8 w-auto object-contain flex-shrink-0" />
+      )}
+      <div className="min-w-0">
+        <p className="text-xs font-semibold text-[#1e3a5f] truncate">{panelConfig?.projectName}</p>
+        <p className="text-xs text-gray-500 truncate">{panelConfig?.company?.name || panelConfig?.institution}</p>
+      </div>
+    </div>
+  )
+}
+
+function CompanyBadge({ companyId }) {
+  const logoUrl = companyId ? COMPANY_LOGO_URLS[companyId] : null
+
+  if (logoUrl) {
+    return (
+      <div className="w-36 h-20 bg-white rounded-2xl flex items-center justify-center mb-5 shadow-xl shadow-black/20 p-3">
+        <img
+          src={logoUrl}
+          alt="Logo empresa"
+          className="w-full h-full object-contain"
+        />
+      </div>
+    )
+  }
+
+  if (companyId === '2') {
+    return (
+      <div className="w-20 h-20 bg-[#f97316] rounded-3xl flex items-center justify-center mb-5 shadow-xl shadow-orange-900/30">
+        <span className="text-white font-black text-2xl tracking-tight">BR</span>
+      </div>
+    )
+  }
+
+  // Default: camera icon
+  return (
+    <div className="w-20 h-20 bg-[#f97316] rounded-3xl flex items-center justify-center mb-5 shadow-xl shadow-orange-900/30">
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-11 w-11 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    </div>
+  )
 }
