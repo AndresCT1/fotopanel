@@ -1,0 +1,296 @@
+import { useState, useEffect } from 'react'
+import Header from './components/Header'
+import PanelForm from './components/PanelForm'
+import PhotoGrid from './components/PhotoGrid'
+import PDFPreview from './components/PDFPreview'
+import PDFViewer from './components/PDFViewer'
+import { usePDF } from './hooks/usePDF'
+import { countPages } from './utils/pdfGenerator'
+
+const VIEW = { HOME: 'home', FORM: 'form', PHOTOS: 'photos', PDF: 'pdf' }
+const STORAGE_KEY = 'fotopanel_history'
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') } catch { return [] }
+}
+function saveHistory(items) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(0, 20))) } catch {}
+}
+
+export default function App() {
+  const [view, setView] = useState(VIEW.HOME)
+  const [panelConfig, setPanelConfig] = useState(null)
+  const [items, setItems] = useState([])
+  const [history, setHistory] = useState(loadHistory)
+  const [showPreview, setShowPreview] = useState(false)
+  const { status, pdfBlob, generate, download, share, reset } = usePDF()
+
+  const canShare = !!navigator.share
+
+  useEffect(() => { saveHistory(history) }, [history])
+
+  const photoCount = items.filter(i => i.type === 'photo').length
+  const pageCount = countPages(items, panelConfig?.showSections)
+
+  // ── Form submit ──────────────────────────────────────────────────────────────
+  const handleFormSubmit = (config) => {
+    setPanelConfig(config)
+    setItems([])
+    reset()
+    setView(VIEW.PHOTOS)
+  }
+
+  // ── PDF generation ───────────────────────────────────────────────────────────
+  const handleGeneratePDF = async () => {
+    if (photoCount === 0) return
+    reset()
+    setShowPreview(false)
+    setView(VIEW.PDF)
+    const result = await generate({ ...panelConfig, items })
+    if (result) {
+      setHistory(h => [{
+        id: Date.now(),
+        projectName: panelConfig.projectName,
+        institution: panelConfig.institution,
+        company: panelConfig.company?.name || null,
+        date: panelConfig.date,
+        photoCount,
+        createdAt: new Date().toISOString(),
+      }, ...h])
+      setShowPreview(true)
+    }
+  }
+
+  const handleDownload = () => download(panelConfig.projectName, panelConfig.date)
+  const handleShare = () => share(panelConfig.projectName, panelConfig.date)
+
+  const handleClearAll = () => {
+    if (confirm('¿Limpiar todo y volver al inicio?')) {
+      setPanelConfig(null)
+      setItems([])
+      reset()
+      setShowPreview(false)
+      setView(VIEW.HOME)
+    }
+  }
+
+  // ── Items operations ─────────────────────────────────────────────────────────
+  const addPhoto = (photo) => setItems(i => [...i, photo])
+
+  const addSection = (atIndex) => {
+    const section = { type: 'section', id: Date.now() + Math.random(), title: '' }
+    setItems(i => { const a = [...i]; a.splice(atIndex, 0, section); return a })
+  }
+
+  const removeItem = (index) => setItems(i => i.filter((_, idx) => idx !== index))
+
+  const updateItem = (index, changes) =>
+    setItems(i => i.map((item, idx) => idx === index ? { ...item, ...changes } : item))
+
+  const moveUp = (index) => {
+    if (index === 0) return
+    setItems(i => { const a = [...i]; [a[index - 1], a[index]] = [a[index], a[index - 1]]; return a })
+  }
+
+  const moveDown = (index) => {
+    setItems(i => {
+      if (index === i.length - 1) return i
+      const a = [...i]; [a[index], a[index + 1]] = [a[index + 1], a[index]]; return a
+    })
+  }
+
+  const clearHistory = () => {
+    if (confirm('¿Eliminar todo el historial?')) {
+      setHistory([])
+      localStorage.removeItem(STORAGE_KEY)
+    }
+  }
+
+  // ── PDF Viewer overlay (renders on top of any view) ──────────────────────────
+  const pdfViewerOverlay = showPreview && pdfBlob && (
+    <PDFViewer
+      pdfBlob={pdfBlob}
+      onClose={() => setShowPreview(false)}
+      onDownload={handleDownload}
+      onShare={handleShare}
+      onEdit={() => { setShowPreview(false); setView(VIEW.PHOTOS) }}
+      canShare={canShare}
+    />
+  )
+
+  // ── HOME ─────────────────────────────────────────────────────────────────────
+  if (view === VIEW.HOME) {
+    return (
+      <>
+        <div className="min-h-screen bg-gray-50 flex flex-col">
+          <div className="bg-[#1e3a5f] pb-10">
+            <div className="px-6 pt-10 pb-2 flex flex-col items-center text-center">
+              <div className="w-20 h-20 bg-[#f97316] rounded-3xl flex items-center justify-center mb-4 shadow-xl shadow-orange-900/30">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-11 w-11 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <h1 className="text-3xl font-black text-white tracking-tight">FotoPanel</h1>
+              <p className="text-blue-200 text-sm mt-2 max-w-xs">Genera paneles fotográficos profesionales para presentar a instituciones</p>
+            </div>
+          </div>
+
+          <div className="flex-1 px-4 -mt-5">
+            <button
+              onClick={() => setView(VIEW.FORM)}
+              className="w-full bg-[#f97316] hover:bg-orange-500 active:bg-orange-600 text-white font-bold py-5 rounded-2xl text-lg shadow-xl shadow-orange-300/40 transition-all active:scale-95 flex items-center justify-center gap-3"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              Nuevo Panel Fotográfico
+            </button>
+
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-bold text-gray-700 text-base">Historial</h2>
+                {history.length > 0 && (
+                  <button onClick={clearHistory} className="text-xs text-red-400 hover:text-red-600 font-medium">
+                    Borrar historial
+                  </button>
+                )}
+              </div>
+
+              {history.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-100 py-10 flex flex-col items-center text-gray-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mb-2 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-sm">No hay paneles generados aún</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {history.map(item => (
+                    <div key={item.id} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center gap-3">
+                      <div className="w-9 h-9 bg-[#1e3a5f]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[#1e3a5f]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-gray-800 text-sm truncate">{item.projectName}</p>
+                        {item.company && <p className="text-xs text-[#f97316] font-medium truncate">{item.company}</p>}
+                        <p className="text-xs text-gray-500 truncate">{item.institution}</p>
+                        <p className="text-xs text-gray-400">{item.photoCount} fotos · {formatShortDate(item.date)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="pb-8 px-4 text-center">
+            <p className="text-xs text-gray-400 mt-6">FotoPanel · Todo funciona sin conexión</p>
+          </div>
+        </div>
+        {pdfViewerOverlay}
+      </>
+    )
+  }
+
+  // ── FORM ─────────────────────────────────────────────────────────────────────
+  if (view === VIEW.FORM) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Header title="Nuevo Panel" onBack={() => setView(VIEW.HOME)} />
+        <div className="flex-1 px-4 pt-5 pb-6">
+          <PanelForm onSubmit={handleFormSubmit} />
+        </div>
+      </div>
+    )
+  }
+
+  // ── PHOTOS ───────────────────────────────────────────────────────────────────
+  if (view === VIEW.PHOTOS) {
+    return (
+      <>
+        <div className="min-h-screen bg-gray-50 flex flex-col">
+          <Header
+            title="Agregar Fotos"
+            onBack={() => setView(VIEW.FORM)}
+            onClear={handleClearAll}
+            showClear
+          />
+
+          <div className="bg-[#1e3a5f]/5 border-b border-[#1e3a5f]/10 px-4 py-2.5">
+            <p className="text-xs font-semibold text-[#1e3a5f] truncate">{panelConfig?.projectName}</p>
+            <p className="text-xs text-gray-500 truncate">{panelConfig?.company?.name || panelConfig?.institution}</p>
+          </div>
+
+          <div className="flex-1 px-4 pt-4 overflow-y-auto">
+            <PhotoGrid
+              items={items}
+              showDescriptions={panelConfig?.showDescriptions}
+              showSections={panelConfig?.showSections}
+              onAddPhoto={addPhoto}
+              onAddSection={addSection}
+              onRemoveItem={removeItem}
+              onUpdateItem={updateItem}
+              onMoveUp={moveUp}
+              onMoveDown={moveDown}
+            />
+          </div>
+
+          <div className="sticky bottom-0 bg-white border-t border-gray-200 px-4 py-3 safe-bottom">
+            <button
+              onClick={handleGeneratePDF}
+              disabled={photoCount === 0}
+              className="w-full bg-[#f97316] hover:bg-orange-500 active:bg-orange-600 disabled:bg-gray-300 disabled:text-gray-400 text-white font-bold py-4 rounded-2xl text-base shadow-lg shadow-orange-200 transition-all active:scale-95 disabled:shadow-none disabled:scale-100"
+            >
+              {photoCount === 0
+                ? 'Agrega al menos 1 foto'
+                : `Generar PDF · ${photoCount} fotos · ${pageCount} ${pageCount === 1 ? 'hoja' : 'hojas'}`}
+            </button>
+          </div>
+        </div>
+        {pdfViewerOverlay}
+      </>
+    )
+  }
+
+  // ── PDF ───────────────────────────────────────────────────────────────────────
+  if (view === VIEW.PDF) {
+    return (
+      <>
+        <div className="min-h-screen bg-gray-50 flex flex-col">
+          <Header
+            title="Vista Previa PDF"
+            onBack={status !== 'generating' ? () => setView(VIEW.PHOTOS) : undefined}
+            onClear={status !== 'generating' ? handleClearAll : undefined}
+            showClear={status !== 'generating'}
+          />
+
+          <div className="bg-[#1e3a5f]/5 border-b border-[#1e3a5f]/10 px-4 py-2.5">
+            <p className="text-xs font-semibold text-[#1e3a5f] truncate">{panelConfig?.projectName}</p>
+            <p className="text-xs text-gray-500">{photoCount} fotos · {pageCount} {pageCount === 1 ? 'hoja' : 'hojas'}</p>
+          </div>
+
+          <div className="flex-1 px-4">
+            <PDFPreview
+              status={status}
+              onGenerate={handleGeneratePDF}
+              onPreview={() => setShowPreview(true)}
+              onDownload={handleDownload}
+              onShare={handleShare}
+              canShare={canShare}
+            />
+          </div>
+        </div>
+        {pdfViewerOverlay}
+      </>
+    )
+  }
+}
+
+function formatShortDate(dateStr) {
+  if (!dateStr) return ''
+  const [y, m, d] = dateStr.split('-')
+  return `${d}/${m}/${y}`
+}
