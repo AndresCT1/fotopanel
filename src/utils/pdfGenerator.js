@@ -120,6 +120,13 @@ function drawHeader(pdf, company, projectName, institution, date, logo) {
     curY += 5
   }
 
+  // "PANEL FOTOGRÁFICO" — always shown
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(15)
+  pdf.setTextColor(249, 115, 22)
+  pdf.text('PANEL FOTOGRÁFICO', MARGIN, curY)
+  curY += 6.5
+
   // Project name (optional — skip if empty)
   if (projectName && projectName.trim()) {
     pdf.setTextColor(255, 255, 255)
