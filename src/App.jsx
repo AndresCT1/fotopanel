@@ -4,16 +4,24 @@ import PanelForm from './components/PanelForm'
 import PhotoGrid from './components/PhotoGrid'
 import PDFPreview from './components/PDFPreview'
 import PDFViewer from './components/PDFViewer'
+import HeaderEditModal from './components/HeaderEditModal'
 import { usePDF } from './hooks/usePDF'
 import { countPages } from './utils/pdfGenerator'
 
 const VIEW = { HOME: 'home', FORM: 'form', PHOTOS: 'photos', PDF: 'pdf' }
 const STORAGE_KEY = 'fotopanel_history'
+const SESSION_KEY = 'fp_session'
 
-// Map company id → public logo URL (add entries when new logos are available)
 const COMPANY_LOGO_URLS = {
   '1': '/logos/ic_logo.png',
 }
+
+// Known institutions (must match PanelForm list minus "Otro")
+const KNOWN_INSTITUTIONS = [
+  'Municipalidad Distrital de San Antonio',
+  'Municipalidad Provincial de Mariscal Nieto',
+  'Gobierno Regional de Moquegua',
+]
 
 async function loadLogoForPDF(url) {
   try {
@@ -45,14 +53,38 @@ function saveHistory(items) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(0, 20))) } catch {}
 }
 
+function loadSession() {
+  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null') } catch { return null }
+}
+function saveSession(panelConfig, items) {
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ panelConfig, items })) } catch {}
+}
+function clearSession() {
+  try { sessionStorage.removeItem(SESSION_KEY) } catch {}
+}
+
+// Reconstruct PanelForm initialValues from a resolved panelConfig
+function formInitialValues(panelConfig) {
+  if (!panelConfig) return null
+  const isKnown = KNOWN_INSTITUTIONS.includes(panelConfig.institution)
+  return {
+    companyId: panelConfig.company?.id || '',
+    projectName: panelConfig.projectName || '',
+    institution: isKnown ? panelConfig.institution : (panelConfig.institution ? 'Otro' : ''),
+    customInstitution: isKnown ? '' : (panelConfig.institution || ''),
+    date: panelConfig.date || '',
+  }
+}
+
 export default function App() {
   const [view, setView] = useState(VIEW.HOME)
-  const [panelConfig, setPanelConfig] = useState(null)
-  const [items, setItems] = useState([])
+  const [panelConfig, setPanelConfig] = useState(() => loadSession()?.panelConfig ?? null)
+  const [items, setItems] = useState(() => loadSession()?.items ?? [])
   const [history, setHistory] = useState(loadHistory)
   const [showPreview, setShowPreview] = useState(false)
-  const [pdfLogo, setPdfLogo] = useState(null)       // base64 logo for jsPDF
-  const [lastCompanyId, setLastCompanyId] = useState( // persists across sessions
+  const [showHeaderEdit, setShowHeaderEdit] = useState(false)
+  const [pdfLogo, setPdfLogo] = useState(null)
+  const [lastCompanyId, setLastCompanyId] = useState(
     () => { try { return localStorage.getItem('fp_company') || null } catch { return null } }
   )
   const { status, pdfBlob, generate, download, share, reset } = usePDF()
@@ -60,6 +92,9 @@ export default function App() {
   const canShare = !!navigator.share
 
   useEffect(() => { saveHistory(history) }, [history])
+
+  // Persist photos + config in sessionStorage so accidental reloads don't lose work
+  useEffect(() => { saveSession(panelConfig, items) }, [panelConfig, items])
 
   // Load logo as base64 whenever the selected company changes
   useEffect(() => {
@@ -72,16 +107,55 @@ export default function App() {
   const photoCount = items.filter(i => i.type === 'photo').length
   const pageCount = countPages(items, panelConfig?.showSections)
 
-  // ── Form submit ──────────────────────────────────────────────────────────────
-  const handleFormSubmit = (config) => {
-    setPanelConfig(config)
+  // ── New panel — resets all state before going to form ───────────────────────
+  const handleNewPanel = () => {
+    setPanelConfig(null)
     setItems([])
     reset()
-    // Persist last used company for home screen branding
+    setShowPreview(false)
+    clearSession()
+    setView(VIEW.FORM)
+  }
+
+  // ── Form submit — photos are NEVER cleared here ─────────────────────────────
+  const handleFormSubmit = (config) => {
+    setPanelConfig(config)
+    reset()
     const id = config.company?.id || ''
     setLastCompanyId(id || null)
     try { localStorage.setItem('fp_company', id) } catch {}
     setView(VIEW.PHOTOS)
+  }
+
+  // ── Header edit — updates config and auto-regenerates from PDF view ─────────
+  const handleHeaderSave = async (updatedConfig) => {
+    setShowHeaderEdit(false)
+    setPanelConfig(updatedConfig)
+
+    // If company changed, load new logo before generating
+    let logo = pdfLogo
+    const newId = updatedConfig.company?.id
+    if (newId !== panelConfig?.company?.id) {
+      const url = newId ? COMPANY_LOGO_URLS[newId] : null
+      logo = url ? await loadLogoForPDF(url) : null
+      setPdfLogo(logo)
+    }
+
+    reset()
+    setShowPreview(false)
+    const result = await generate({ ...updatedConfig, items, logo })
+    if (result) {
+      setHistory(h => [{
+        id: Date.now(),
+        projectName: updatedConfig.projectName,
+        institution: updatedConfig.institution,
+        company: updatedConfig.company?.name || null,
+        date: updatedConfig.date,
+        photoCount,
+        createdAt: new Date().toISOString(),
+      }, ...h])
+      setShowPreview(true)
+    }
   }
 
   // ── PDF generation ───────────────────────────────────────────────────────────
@@ -114,6 +188,7 @@ export default function App() {
       setItems([])
       reset()
       setShowPreview(false)
+      clearSession()
       setView(VIEW.HOME)
     }
   }
@@ -150,7 +225,7 @@ export default function App() {
     }
   }
 
-  // ── PDF Viewer overlay (renders on top of any view) ──────────────────────────
+  // ── PDF Viewer overlay ───────────────────────────────────────────────────────
   const pdfViewerOverlay = showPreview && pdfBlob && (
     <PDFViewer
       pdfBlob={pdfBlob}
@@ -177,7 +252,7 @@ export default function App() {
 
           <div className="flex-1 px-4 -mt-5">
             <button
-              onClick={() => setView(VIEW.FORM)}
+              onClick={handleNewPanel}
               className="w-full bg-[#f97316] hover:bg-orange-500 active:bg-orange-600 text-white font-bold py-5 rounded-2xl text-lg shadow-xl shadow-orange-300/40 transition-all active:scale-95 flex items-center justify-center gap-3"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -236,11 +311,16 @@ export default function App() {
 
   // ── FORM ─────────────────────────────────────────────────────────────────────
   if (view === VIEW.FORM) {
+    // If panelConfig exists the user is coming back from PHOTOS — go back there, not HOME
+    const handleFormBack = () => panelConfig ? setView(VIEW.PHOTOS) : setView(VIEW.HOME)
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <Header title="Nuevo Panel" onBack={() => setView(VIEW.HOME)} />
+        <Header
+          title={panelConfig ? 'Editar configuración' : 'Nuevo Panel'}
+          onBack={handleFormBack}
+        />
         <div className="flex-1 px-4 pt-5 pb-6">
-          <PanelForm onSubmit={handleFormSubmit} />
+          <PanelForm onSubmit={handleFormSubmit} initialValues={formInitialValues(panelConfig)} />
         </div>
       </div>
     )
@@ -307,10 +387,21 @@ export default function App() {
             {panelConfig?.company?.id && COMPANY_LOGO_URLS[panelConfig.company.id] && (
               <img src={COMPANY_LOGO_URLS[panelConfig.company.id]} alt="" className="h-8 w-auto object-contain flex-shrink-0" />
             )}
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-[#1e3a5f] truncate">{panelConfig?.projectName}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-[#1e3a5f] truncate">{panelConfig?.projectName || 'Sin nombre de proyecto'}</p>
               <p className="text-xs text-gray-500">{photoCount} fotos · {pageCount} {pageCount === 1 ? 'hoja' : 'hojas'}</p>
             </div>
+            {status !== 'generating' && (
+              <button
+                onClick={() => setShowHeaderEdit(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e3a5f] text-white text-xs font-semibold rounded-xl flex-shrink-0 transition-all active:scale-95"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Editar encabezado
+              </button>
+            )}
           </div>
 
           <div className="flex-1 px-4">
@@ -324,7 +415,16 @@ export default function App() {
             />
           </div>
         </div>
+
         {pdfViewerOverlay}
+
+        {showHeaderEdit && (
+          <HeaderEditModal
+            panelConfig={panelConfig}
+            onSave={handleHeaderSave}
+            onClose={() => setShowHeaderEdit(false)}
+          />
+        )}
       </>
     )
   }
@@ -357,11 +457,7 @@ function CompanyBadge({ companyId }) {
   if (logoUrl) {
     return (
       <div className="w-36 h-20 bg-white rounded-2xl flex items-center justify-center mb-5 shadow-xl shadow-black/20 p-3">
-        <img
-          src={logoUrl}
-          alt="Logo empresa"
-          className="w-full h-full object-contain"
-        />
+        <img src={logoUrl} alt="Logo empresa" className="w-full h-full object-contain" />
       </div>
     )
   }
@@ -374,7 +470,6 @@ function CompanyBadge({ companyId }) {
     )
   }
 
-  // Default: camera icon
   return (
     <div className="w-20 h-20 bg-[#f97316] rounded-3xl flex items-center justify-center mb-5 shadow-xl shadow-orange-900/30">
       <svg xmlns="http://www.w3.org/2000/svg" className="h-11 w-11 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
