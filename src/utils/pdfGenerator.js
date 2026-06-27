@@ -10,19 +10,27 @@ const SECTION_GAP = 4
 const FOOTER_H = 10
 const GAP = 8
 
+const PDF_THEMES = {
+  '1': { headerBg: [30, 58, 95],   accent: [249, 115, 22], panelLabel: [249, 115, 22], subText: [170, 205, 235], divider: [150, 185, 215] },
+  '2': { headerBg: [139, 26, 26],  accent: [201, 168, 76], panelLabel: [201, 168, 76], subText: [220, 190, 155], divider: [175, 130, 90]  },
+}
+const DEFAULT_PDF_THEME = PDF_THEMES['1']
+function getTheme(company) { return (company?.id && PDF_THEMES[company.id]) || DEFAULT_PDF_THEME }
+
 export async function generatePDF({ company, projectName, institution, date, items, showDescriptions, showSections, logo, showDate, showPagination }) {
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const formattedDate = (showDate && date) ? formatDate(date) : null
   const pages = buildPages(items, showSections)
   const totalPages = pages.length
+  const theme = getTheme(company)
 
   for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
     if (pageIdx > 0) pdf.addPage()
     const { sectionTitle, photos } = pages[pageIdx]
 
-    drawHeader(pdf, company, projectName, institution, formattedDate, logo)
+    drawHeader(pdf, company, projectName, institution, formattedDate, logo, theme)
 
-    const sectionBarH = sectionTitle ? drawSectionBar(pdf, sectionTitle) : 0
+    const sectionBarH = sectionTitle ? drawSectionBar(pdf, sectionTitle, theme) : 0
 
     const layout = computeLayout(sectionBarH, showDescriptions, showPagination)
 
@@ -91,10 +99,10 @@ function computeLayout(sectionBarH, showDescriptions, showPagination) {
   return { contentTop, photoH, descH }
 }
 
-function drawHeader(pdf, company, projectName, institution, date, logo) {
-  pdf.setFillColor(30, 58, 95)
+function drawHeader(pdf, company, projectName, institution, date, logo, theme) {
+  pdf.setFillColor(...theme.headerBg)
   pdf.rect(0, 0, PAGE_W, HEADER_H, 'F')
-  pdf.setFillColor(249, 115, 22)
+  pdf.setFillColor(...theme.accent)
   pdf.rect(0, HEADER_H, PAGE_W, ACCENT_H, 'F')
 
   const textMaxW = PAGE_W - MARGIN * 2 - 32
@@ -110,11 +118,11 @@ function drawHeader(pdf, company, projectName, institution, date, logo) {
 
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(8)
-    pdf.setTextColor(170, 205, 235)
+    pdf.setTextColor(...theme.subText)
     pdf.text(`RUC: ${company.ruc}`, MARGIN, curY)
     curY += 4
 
-    pdf.setDrawColor(150, 185, 215)
+    pdf.setDrawColor(...theme.divider)
     pdf.setLineWidth(0.25)
     pdf.line(MARGIN, curY, PAGE_W - MARGIN, curY)
     curY += 5
@@ -123,7 +131,7 @@ function drawHeader(pdf, company, projectName, institution, date, logo) {
   // "PANEL FOTOGRÁFICO" — always shown
   pdf.setFont('helvetica', 'bold')
   pdf.setFontSize(15)
-  pdf.setTextColor(249, 115, 22)
+  pdf.setTextColor(...theme.panelLabel)
   pdf.text('PANEL FOTOGRÁFICO', MARGIN, curY)
   curY += 6.5
 
@@ -140,7 +148,7 @@ function drawHeader(pdf, company, projectName, institution, date, logo) {
   // Institution (always shown)
   pdf.setFont('helvetica', 'normal')
   pdf.setFontSize(8)
-  pdf.setTextColor(170, 205, 235)
+  pdf.setTextColor(...theme.subText)
   if (institution) {
     pdf.text(institution, MARGIN, curY)
     curY += 4.5
@@ -150,7 +158,7 @@ function drawHeader(pdf, company, projectName, institution, date, logo) {
   if (date) {
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(8)
-    pdf.setTextColor(170, 205, 235)
+    pdf.setTextColor(...theme.subText)
     pdf.text(date, MARGIN, curY)
   }
 
@@ -176,8 +184,8 @@ function drawHeader(pdf, company, projectName, institution, date, logo) {
     const imgY = BOX_Y + PAD + (availH - drawH) / 2
     pdf.addImage(logo.dataUrl, 'PNG', imgX, imgY, drawW, drawH)
   } else {
-    // Fallback: orange badge
-    pdf.setFillColor(249, 115, 22)
+    // Fallback: accent-colored badge
+    pdf.setFillColor(...theme.accent)
     pdf.roundedRect(BOX_X, BOX_Y, BOX_W, BOX_H, 3, 3, 'F')
     pdf.setTextColor(255, 255, 255)
     pdf.setFont('helvetica', 'bold')
@@ -193,7 +201,7 @@ function drawHeader(pdf, company, projectName, institution, date, logo) {
   }
 }
 
-function drawSectionBar(pdf, title) {
+function drawSectionBar(pdf, title, theme) {
   const FONT_SIZE = 9
   const LINE_H = 4.5   // mm entre líneas
   const V_PAD = 3      // padding vertical arriba y abajo
@@ -206,7 +214,7 @@ function drawSectionBar(pdf, title) {
   const barH = Math.max(SECTION_H, lines.length * LINE_H + V_PAD * 2)
 
   const barY = HEADER_H + ACCENT_H
-  pdf.setFillColor(30, 58, 95)
+  pdf.setFillColor(...theme.headerBg)
   pdf.rect(0, barY, PAGE_W, barH, 'F')
 
   pdf.setTextColor(255, 255, 255)

@@ -14,6 +14,12 @@ const SESSION_KEY = 'fp_session'
 
 const COMPANY_LOGO_URLS = {
   '1': '/logos/ic_logo.png',
+  '2': '/logos/bryjhocar_logo.png',
+}
+
+const COMPANY_THEMES = {
+  '1': { bg: '#1e3a5f', accent: '#f97316' },
+  '2': { bg: '#8B1A1A', accent: '#C9A84C' },
 }
 
 // Known institutions (must match PanelForm list minus "Otro")
@@ -239,14 +245,15 @@ export default function App() {
 
   // ── HOME ─────────────────────────────────────────────────────────────────────
   if (view === VIEW.HOME) {
+    const activeTheme = COMPANY_THEMES[lastCompanyId] || COMPANY_THEMES['1']
     return (
       <>
         <div className="min-h-screen bg-gray-50 flex flex-col">
-          <div className="bg-[#1e3a5f] pb-10">
+          <div className="pb-10" style={{ backgroundColor: activeTheme.bg }}>
             <div className="px-6 pt-10 pb-2 flex flex-col items-center text-center">
               <CompanyBadge companyId={lastCompanyId} />
               <h1 className="text-3xl font-black text-white tracking-tight">FotoPanel</h1>
-              <p className="text-blue-200 text-sm mt-2 max-w-xs">Genera paneles fotográficos profesionales para presentar a instituciones</p>
+              <p className="text-white/70 text-sm mt-2 max-w-xs">Genera paneles fotográficos profesionales para presentar a instituciones</p>
             </div>
           </div>
 
@@ -453,25 +460,24 @@ function ProjectStrip({ panelConfig }) {
 
 function CompanyBadge({ companyId }) {
   const logoUrl = companyId ? COMPANY_LOGO_URLS[companyId] : null
+  const theme = COMPANY_THEMES[companyId] || null
 
   if (logoUrl) {
     return (
-      <div className="w-36 h-20 bg-white rounded-2xl flex items-center justify-center mb-5 shadow-xl shadow-black/20 p-3">
+      <div
+        className="w-36 h-20 bg-white rounded-2xl flex items-center justify-center mb-5 shadow-xl shadow-black/20 p-3"
+        style={theme ? { border: `2px solid ${theme.accent}` } : undefined}
+      >
         <img src={logoUrl} alt="Logo empresa" className="w-full h-full object-contain" />
       </div>
     )
   }
 
-  if (companyId === '2') {
-    return (
-      <div className="w-20 h-20 bg-[#f97316] rounded-3xl flex items-center justify-center mb-5 shadow-xl shadow-orange-900/30">
-        <span className="text-white font-black text-2xl tracking-tight">BR</span>
-      </div>
-    )
-  }
-
   return (
-    <div className="w-20 h-20 bg-[#f97316] rounded-3xl flex items-center justify-center mb-5 shadow-xl shadow-orange-900/30">
+    <div
+      className="w-20 h-20 rounded-3xl flex items-center justify-center mb-5 shadow-xl"
+      style={{ backgroundColor: theme?.accent || '#f97316' }}
+    >
       <svg xmlns="http://www.w3.org/2000/svg" className="h-11 w-11 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
