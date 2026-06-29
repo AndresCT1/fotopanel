@@ -15,5 +15,30 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      (function () {
+        var p = new URLSearchParams(location.search).get('empresa');
+        var cfg = {
+          ingenious: {
+            manifest: '/manifest-ingenious.json',
+            theme: '#1e3a5f',
+            icon192: '/logos/ic_icon_192.png',
+          },
+          bryjhocar: {
+            manifest: '/manifest-bryjhocar.json',
+            theme: '#8B1A1A',
+            icon192: '/logos/bjc_icon_192.png',
+          },
+        };
+        if (!p || !cfg[p]) return;
+        var c = cfg[p];
+        var ml = document.querySelector('link[rel="manifest"]');
+        if (ml) ml.setAttribute('href', c.manifest);
+        var tc = document.querySelector('meta[name="theme-color"]');
+        if (tc) tc.setAttribute('content', c.theme);
+        var ai = document.querySelector('link[rel="apple-touch-icon"]');
+        if (ai) ai.setAttribute('href', c.icon192);
+      })();
+    </script>
   </body>
 </html>
