@@ -24,6 +24,20 @@ export default defineConfig({
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
+        shortcuts: [
+          {
+            name: 'Ingenious Constructions',
+            short_name: 'Ingenious',
+            url: '/?empresa=ingenious',
+            icons: [{ src: '/logos/ic_logo.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Bryjhocar S.A.C',
+            short_name: 'Bryjhocar',
+            url: '/?empresa=bryjhocar',
+            icons: [{ src: '/logos/bryjhocar_logo.png', sizes: '192x192' }],
+          },
+        ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],

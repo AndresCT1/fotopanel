@@ -17,6 +17,11 @@ const COMPANY_LOGO_URLS = {
   '2': '/logos/bryjhocar_logo.png',
 }
 
+const EMPRESA_URL_MAP = {
+  'ingenious': '1',
+  'bryjhocar': '2',
+}
+
 const COMPANY_THEMES = {
   '1': { bg: '#1e3a5f', accent: '#f97316' },
   '2': { bg: '#8B1A1A', accent: '#C9A84C' },
@@ -93,7 +98,21 @@ export default function App() {
   const [lastCompanyId, setLastCompanyId] = useState(
     () => { try { return localStorage.getItem('fp_company') || null } catch { return null } }
   )
+  const [urlCompanyId, setUrlCompanyId] = useState(null)
   const { status, pdfBlob, generate, download, share, reset } = usePDF()
+
+  // Detect ?empresa=X URL param on mount and skip HOME
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const empresaParam = params.get('empresa')?.toLowerCase()
+    if (!empresaParam) return
+    const companyId = EMPRESA_URL_MAP[empresaParam]
+    if (!companyId) return
+    try { localStorage.setItem('fp_company', companyId) } catch {}
+    setLastCompanyId(companyId)
+    setUrlCompanyId(companyId)
+    setView(VIEW.FORM)
+  }, [])
 
   const canShare = !!navigator.share
 
@@ -125,6 +144,7 @@ export default function App() {
 
   // ── Form submit — photos are NEVER cleared here ─────────────────────────────
   const handleFormSubmit = (config) => {
+    setUrlCompanyId(null)
     setPanelConfig(config)
     reset()
     const id = config.company?.id || ''
@@ -320,6 +340,9 @@ export default function App() {
   if (view === VIEW.FORM) {
     // If panelConfig exists the user is coming back from PHOTOS — go back there, not HOME
     const handleFormBack = () => panelConfig ? setView(VIEW.PHOTOS) : setView(VIEW.HOME)
+    const formInit = urlCompanyId
+      ? { ...(formInitialValues(panelConfig) ?? {}), companyId: urlCompanyId }
+      : formInitialValues(panelConfig)
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <Header
@@ -327,7 +350,7 @@ export default function App() {
           onBack={handleFormBack}
         />
         <div className="flex-1 px-4 pt-5 pb-6">
-          <PanelForm onSubmit={handleFormSubmit} initialValues={formInitialValues(panelConfig)} />
+          <PanelForm onSubmit={handleFormSubmit} initialValues={formInit} />
         </div>
       </div>
     )
